@@ -1,6 +1,6 @@
-# ACP Java Implementation
+# ACPJava : Agent Communication Protocol Java Implementation
 
-ACP Java is a pure Java implementation of the Agent Communication Protocol (ACP). ACP is an open protocol for communication between AI agents, applications, and humans.
+ACPJava is a pure Java implementation of the Agent Communication Protocol (ACP). ACP is an open protocol for communication between AI agents, applications, and humans.
 
 ## Overview
 
