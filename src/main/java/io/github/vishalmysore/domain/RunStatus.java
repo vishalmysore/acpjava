@@ -6,5 +6,5 @@ public enum RunStatus {
     CANCELLING,
     CANCELLED,
     COMPLETED,
-    FAILED
+    CREATED, FAILED
 }
