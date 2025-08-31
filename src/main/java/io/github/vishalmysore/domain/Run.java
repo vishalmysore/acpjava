@@ -10,7 +10,7 @@ public class Run {
     private String agentName;
     private UUID sessionId;
     private UUID runId;
-    private String status;  // RunStatus enum values
+    private RunStatus status;  // RunStatus enum values
     private Object awaitRequest;  // AwaitRequest type
     private List<Message> output;
     private Error error;

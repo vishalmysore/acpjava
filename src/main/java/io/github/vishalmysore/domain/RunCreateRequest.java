@@ -12,5 +12,5 @@ public class RunCreateRequest {
     private String sessionId;
     private Session session;
     private List<Message> input;
-    private String mode;  // RunMode enum values
+    private RunRequestMode mode;  // RunMode enum values
 }

@@ -6,11 +6,10 @@
 
     <groupId>io.github.vishalmysore</groupId>
     <artifactId>acpjava</artifactId>
-    <version>0.0.1</version>
+    <version>0.0.2</version>
     <name>Tools For Artificial Intelligence</name>
     <description>
-        Tools4Ai is Java Agentic AI Framework. Connect Various Tools directly into AI LLM. This is 100% Java implementation of Large Action Model or LLM Agent. It can work with Gemini, OpenAI , LocalAI or any locally hosted LLM
-        Integrate AI with enterprise tools or external tools, converting natural language prompts into actions. Actions could be Java Methods, Classes, Http endpoints, Shell scripts , Swagger url or more.
+        ACPJava is pure Java implementation of Agent Communication Protocol. ACP adopts a RESTful architecture implemented over HTTP, supporting both synchronous and asynchronous agent interactions. It represents a significant step toward standardizing how AI agents communicate in enterprise environments. Building a multi-agent system with agents shared across teams and organizations can be challenging. You may need to write custom integrations each time a team updates their agent design or changes the agent’s framework. The Agent Communication Protocol (ACP) is an open protocol that addresses this challenge by standardizing communication between agents.
     </description>
     <url>https://github.com/vishalmysore/Tools4AI</url>
     <licenses>

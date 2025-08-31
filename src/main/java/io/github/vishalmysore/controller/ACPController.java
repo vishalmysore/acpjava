@@ -1,6 +1,8 @@
 package io.github.vishalmysore.controller;
 
 import com.t4a.processor.AIProcessor;
+import com.t4a.processor.LoggingHumanDecision;
+import com.t4a.processor.LogginggExplainDecision;
 import io.github.vishalmysore.a2a.server.RealTimeAgentCardController;
 import io.github.vishalmysore.domain.*;
 import com.t4a.api.AIAction;
@@ -17,6 +19,9 @@ import lombok.extern.java.Log;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.ApplicationContext;
 import org.springframework.http.ResponseEntity;
+
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
 
 
 import java.lang.reflect.Method;
@@ -43,6 +48,9 @@ public class ACPController extends RealTimeAgentCardController {
     
     private AIProcessor baseAIProcessor = null;
     private List<AgentManifest> agentManifests = new ArrayList<>();
+    private Map<UUID, Run> runQueue = new ConcurrentHashMap<>();
+    private Map<UUID, CompletableFuture<Void>> runningTasks = new ConcurrentHashMap<>();
+    
     @Value("${server.port:8080}")
     private String serverPort;
 
@@ -131,44 +139,7 @@ public class ACPController extends RealTimeAgentCardController {
         }
     }
 
-    private AgentManifest convertToAgentManifest(AgentCard card, Map<String, List<Metadata.Capability>> groupedCapabilities) {
-        AgentManifest manifest = new AgentManifest();
-        manifest.setName(card.getName());
-        manifest.setDescription(card.getDescription());
-        
-        // Set default content types
-        manifest.setInputContentTypes(Arrays.asList("text/plain", "application/json"));
-        manifest.setOutputContentTypes(Arrays.asList("text/plain", "application/json"));
 
-        // Create metadata
-        Metadata metadata = new Metadata();
-        metadata.setDocumentation(card.getDescription());
-        metadata.setFramework("Tools4AI");
-        metadata.setCapabilities(new ArrayList<>());
-        
-        // Add all capabilities from grouped actions
-        for (List<Metadata.Capability> capabilities : groupedCapabilities.values()) {
-            metadata.getCapabilities().addAll(capabilities);
-        }
-
-        // Add author information if available
-        Person author = new Person();
-        author.setName(card.getProvider().getOrganization());
-        metadata.setAuthor(author);
-
-        // Set the creation timestamp
-        metadata.setCreatedAt(OffsetDateTime.now());
-        metadata.setUpdatedAt(OffsetDateTime.now());
-
-        manifest.setMetadata(metadata);
-
-        // Create status
-        Status status = new Status();
-        status.setSuccessRate(100.0); // Default value
-        manifest.setStatus(status);
-
-        return manifest;
-    }
 
     @GetMapping("/ping")
     public ResponseEntity<Map<String, String>> ping() {
@@ -200,30 +171,89 @@ public class ACPController extends RealTimeAgentCardController {
 
     @PostMapping("/runs")
     public ResponseEntity<Run> createRun(@RequestBody RunCreateRequest request) {
+        AIAction action = PredictionLoader.getInstance().getPredictions().entrySet().stream()
+                .filter(entry -> entry.getKey().equalsIgnoreCase(request.getAgentName()))
+                .map(Map.Entry::getValue)
+                .findFirst()
+                .orElse(null);
         Run run = new Run();
+        run.setRunId(UUID.randomUUID());
+        run.setAgentName(request.getAgentName());
+        run.setCreatedAt(OffsetDateTime.now());
+
         try {
-            Object obj  = baseAIProcessor.processSingleAction(request.toString());
-
-            MessagePart part = new MessagePart();
-            part.setContent(obj.toString());
-            Message message = new Message();
-            message.setRole("assistant");
-
-            message.addPart(part);
-
-            run.addOutput(message);
+            if (RunRequestMode.SYNC.equals(request.getMode())) {
+                // Synchronous processing
+                Object obj = baseAIProcessor.processSingleAction(request.toString(),action,new LoggingHumanDecision(), new LogginggExplainDecision());
+                MessagePart part = new MessagePart();
+                part.setContent(obj.toString());
+                Message message = new Message();
+                message.setRole(MessageRole.AGENT);
+                message.addPart(part);
+                run.addOutput(message);
+                run.setStatus(RunStatus.COMPLETED);
+                run.setFinishedAt(OffsetDateTime.now());
+                
+            } else if (RunRequestMode.ASYNC.equals(request.getMode())) {
+                // Asynchronous processing
+                run.setStatus(RunStatus.IN_PROGRESS);
+                runQueue.put(run.getRunId(), run);
+                
+                CompletableFuture<Void> future = CompletableFuture.runAsync(() -> {
+                    try {
+                        // Update status to in-progress
+                        run.setStatus(RunStatus.IN_PROGRESS);
+                        
+                        // Process the request
+                        Object obj = baseAIProcessor.processSingleAction(request.toString(),action,new LoggingHumanDecision(), new LogginggExplainDecision());
+                        
+                        // Create response message
+                        MessagePart part = new MessagePart();
+                        part.setContent(obj.toString());
+                        Message message = new Message();
+                        message.setRole(MessageRole.AGENT);
+                        message.addPart(part);
+                        
+                        // Update run with result
+                        run.addOutput(message);
+                        run.setStatus(RunStatus.COMPLETED);
+                        run.setFinishedAt(OffsetDateTime.now());
+                        
+                    } catch (Exception e) {
+                        log.severe("Error processing async run: " + e.getMessage());
+                        run.setStatus(RunStatus.FAILED);
+                        run.setError(createError("processing_error", e.getMessage()));
+                        run.setFinishedAt(OffsetDateTime.now());
+                    }
+                });
+                
+                runningTasks.put(run.getRunId(), future);
+                return ResponseEntity.accepted().body(run);
+            }
 
         } catch (AIProcessingException e) {
-            throw new RuntimeException(e);
+            run.setStatus(RunStatus.FAILED);
+            run.setError(createError("processing_error", e.getMessage()));
+            run.setFinishedAt(OffsetDateTime.now());
         }
-        // Implementation
+        
         return ResponseEntity.ok(run);
     }
 
     @GetMapping("/runs/{runId}")
     public ResponseEntity<Run> getRun(@PathVariable UUID runId) {
-        // Implementation
-        return ResponseEntity.ok(new Run());
+        Run run = runQueue.get(runId);
+        if (run == null) {
+            return ResponseEntity.notFound().build();
+        }
+        return ResponseEntity.ok(run);
+    }
+    
+    private io.github.vishalmysore.domain.Error createError(String code, String message) {
+        io.github.vishalmysore.domain.Error error = new io.github.vishalmysore.domain.Error();
+        error.setCode(code);
+        error.setMessage(message);
+        return error;
     }
 
     @PostMapping("/runs/{runId}")
