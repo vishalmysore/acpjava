@@ -10,4 +10,11 @@ public class Message {
     private List<MessagePart> parts;
     private OffsetDateTime createdAt;
     private OffsetDateTime completedAt;
+
+    public void addPart(MessagePart part) {
+        if(this.parts == null) {
+            this.parts = new java.util.ArrayList<>();
+        }
+        this.parts.add(part);
+    }
 }

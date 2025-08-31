@@ -1,5 +1,6 @@
 package io.github.vishalmysore.controller;
 
+import com.t4a.processor.AIProcessor;
 import io.github.vishalmysore.a2a.server.RealTimeAgentCardController;
 import io.github.vishalmysore.domain.*;
 import com.t4a.api.AIAction;
@@ -40,7 +41,7 @@ import java.util.logging.Logger;
 public class ACPController extends RealTimeAgentCardController {
     private static final Logger log = Logger.getLogger(ACPController.class.getName());
     
-    private PromptTransformer promptTransformer;
+    private AIProcessor baseAIProcessor = null;
     private List<AgentManifest> agentManifests = new ArrayList<>();
     @Value("${server.port:8080}")
     private String serverPort;
@@ -51,77 +52,82 @@ public class ACPController extends RealTimeAgentCardController {
 
     @PostConstruct
     public void init() {
-        promptTransformer = PredictionLoader.getInstance().createOrGetPromptTransformer();
         Map<GroupInfo, String> groupActions = PredictionLoader.getInstance().getActionGroupList().getGroupActions();
         Map<String, AIAction> predictions = PredictionLoader.getInstance().getPredictions();
-        StringBuilder realTimeDescription = new StringBuilder("This agent provides the following capabilities: ");
 
-        // Group capabilities for AgentManifest
-        Map<String, List<Metadata.Capability>> groupedCapabilities = new HashMap<>();
+        agentManifests.clear();
+        
+        try {
+            baseAIProcessor = PredictionLoader.getInstance().createOrGetAIProcessor();
+            String hostName = InetAddress.getLocalHost().getHostName();
+            String baseUrl = "http://" + hostName + ":" + serverPort;
 
-        for (Map.Entry<GroupInfo, String> entry : groupActions.entrySet()) {
-            GroupInfo group = entry.getKey();
-            String[] actionNames = entry.getValue().split(",");
-            StringBuilder methodNames = new StringBuilder();
-            List<Metadata.Capability> capabilities = new ArrayList<>();
+            // Create one AgentManifest per group
+            for (Map.Entry<GroupInfo, String> entry : groupActions.entrySet()) {
+                GroupInfo group = entry.getKey();
+                String[] actionNames = entry.getValue().split(",");
+                List<Metadata.Capability> capabilities = new ArrayList<>();
 
-            for (String actionName : actionNames) {
-                AIAction action = predictions.get(actionName.trim());
-                if (action instanceof GenericJavaMethodAction methodAction) {
-                    Method m = methodAction.getActionMethod();
-                    if (isMethodAllowed(m)) {
-                        methodNames.append(",");
-                        methodNames.append(actionName.trim());
-                        
-                        Metadata.Capability capability = new Metadata.Capability();
-                        capability.setName(actionName.trim());
-                        capability.setDescription(methodAction.getDescription());
-                        capabilities.add(capability);
+                // Collect all valid actions for this group
+                for (String actionName : actionNames) {
+                    AIAction action = predictions.get(actionName.trim());
+                    if (action instanceof GenericJavaMethodAction methodAction) {
+                        Method m = methodAction.getActionMethod();
+                        if (isMethodAllowed(m)) {
+                            Metadata.Capability capability = new Metadata.Capability();
+                            capability.setName(actionName.trim());
+                            capability.setDescription(methodAction.getDescription());
+                            capabilities.add(capability);
+                        }
                     }
                 }
+
+                if (!capabilities.isEmpty()) {
+                    AgentManifest manifest = new AgentManifest();
+                    
+                    // Set basic info
+                    manifest.setName(group.getGroupName().toLowerCase().replaceAll("\\s+", "-"));
+                    manifest.setDescription(group.getGroupDescription());
+                    
+                    // Set default content types
+                    manifest.setInputContentTypes(Arrays.asList("text/plain", "application/json"));
+                    manifest.setOutputContentTypes(Arrays.asList("text/plain", "application/json"));
+
+                    // Create metadata
+                    Metadata metadata = new Metadata();
+                    metadata.setDocumentation(group.getGroupDescription());
+                    metadata.setFramework("Tools4AI");
+                    metadata.setCapabilities(capabilities);
+                    metadata.setCreatedAt(OffsetDateTime.now());
+                    metadata.setUpdatedAt(OffsetDateTime.now());
+
+                    // Add URLs and links
+                    List<Link> links = new ArrayList<>();
+                    Link apiLink = new Link();
+                    apiLink.setType("api");
+                    apiLink.setUrl(baseUrl + "/agents/" + manifest.getName());
+                    links.add(apiLink);
+                    metadata.setLinks(links);
+
+                    manifest.setMetadata(metadata);
+
+                    // Set status
+                    Status status = new Status();
+                    status.setSuccessRate(100.0);
+                    manifest.setStatus(status);
+
+                    agentManifests.add(manifest);
+                }
             }
-            groupedCapabilities.put(group.getGroupName(), capabilities);
-            realTimeDescription.append(group.getGroupName())
-                    .append(" (")
-                    .append(group.getGroupDescription())
-                    .append("), with actions: ")
-                    .append(methodNames)
-                    .append("; ");
-        }
 
-        if (realTimeDescription.length() > 2) {
-            realTimeDescription.setLength(realTimeDescription.length() - 2);
-        }
-
-        String finalDescription = realTimeDescription.toString();
-
-        try {
-            AgentCard card;
-            if(groupActions.isEmpty()) {
-                log.warning("No actions found for the agent card");
-                card = new AgentCard();
-                storeCard(card);
+            if (agentManifests.isEmpty()) {
+                log.warning("No agent manifests created - no valid actions found in any group");
             } else {
-                card = (AgentCard) promptTransformer.transformIntoPojo(
-                        "use this description and also populate skills in detail " + finalDescription,
-                        AgentCard.class);
-                storeCard(card);
+                log.info("Created " + agentManifests.size() + " agent manifests");
             }
-            
-            String hostName = InetAddress.getLocalHost().getHostName();
-            getCachedAgentCard().setUrl("http://" + hostName + ":" + serverPort);
-            poplateCardFromProperties(getCachedAgentCard());
 
-            // Convert AgentCard to AgentManifest
-            AgentManifest manifest = convertToAgentManifest(card, groupedCapabilities);
-            agentManifests.clear();
-            agentManifests.add(manifest);
-
-        } catch (AIProcessingException e) {
-            log.severe("The skills are not populate in the agent card as actions are more in number \n you can either try with different processor \n" +
-                    " or you can populate skills individually and add to agent card , or it could be that AI key is not initialized "+e.getMessage());
         } catch (UnknownHostException e) {
-            log.warning("host not known set the url manually card.setUrl");
+            log.warning("Host not known, using default localhost for URLs: " + e.getMessage());
         }
     }
 
@@ -194,8 +200,24 @@ public class ACPController extends RealTimeAgentCardController {
 
     @PostMapping("/runs")
     public ResponseEntity<Run> createRun(@RequestBody RunCreateRequest request) {
+        Run run = new Run();
+        try {
+            Object obj  = baseAIProcessor.processSingleAction(request.toString());
+
+            MessagePart part = new MessagePart();
+            part.setContent(obj.toString());
+            Message message = new Message();
+            message.setRole("assistant");
+
+            message.addPart(part);
+
+            run.addOutput(message);
+
+        } catch (AIProcessingException e) {
+            throw new RuntimeException(e);
+        }
         // Implementation
-        return ResponseEntity.ok(new Run());
+        return ResponseEntity.ok(run);
     }
 
     @GetMapping("/runs/{runId}")

@@ -16,4 +16,11 @@ public class Run {
     private Error error;
     private OffsetDateTime createdAt;
     private OffsetDateTime finishedAt;
+
+    public void addOutput(Message message) {
+        if(this.output == null) {
+            this.output = new java.util.ArrayList<>();
+        }
+        this.output.add(message);
+    }
 }
