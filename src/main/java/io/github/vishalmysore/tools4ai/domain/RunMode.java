@@ -1,4 +1,4 @@
-package io.github.vishalmysore.domain;
+package io.github.vishalmysore.tools4ai.domain;
 
 public enum RunMode {
     SYNC,

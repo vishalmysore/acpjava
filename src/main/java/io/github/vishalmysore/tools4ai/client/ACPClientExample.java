@@ -1,6 +1,7 @@
-package io.github.vishalmysore.client;
+package io.github.vishalmysore.tools4ai.client;
 
-import io.github.vishalmysore.domain.*;
+
+import io.github.vishalmysore.tools4ai.domain.*;
 
 import java.util.List;
 import java.util.concurrent.CompletableFuture;

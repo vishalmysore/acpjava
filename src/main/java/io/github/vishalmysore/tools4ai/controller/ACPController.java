@@ -1,20 +1,19 @@
-package io.github.vishalmysore.controller;
+package io.github.vishalmysore.tools4ai.controller;
 
 import com.t4a.processor.AIProcessor;
 import com.t4a.processor.LoggingHumanDecision;
 import com.t4a.processor.LogginggExplainDecision;
+
+import io.github.vishalmysore.tools4ai.domain.*;
 import io.github.vishalmysore.a2a.server.RealTimeAgentCardController;
-import io.github.vishalmysore.domain.*;
+
 import com.t4a.api.AIAction;
 import com.t4a.api.GenericJavaMethodAction;
 import com.t4a.api.GroupInfo;
 import com.t4a.predict.PredictionLoader;
 import com.t4a.processor.AIProcessingException;
-import com.t4a.transform.GeminiV2PromptTransformer;
-import com.t4a.transform.PromptTransformer;
-import io.github.vishalmysore.a2a.domain.AgentCard;
+import io.github.vishalmysore.tools4ai.domain.Error;
 import jakarta.annotation.PostConstruct;
-import lombok.Getter;
 import lombok.extern.java.Log;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.ApplicationContext;
@@ -28,23 +27,16 @@ import java.lang.reflect.Method;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
 
-import jakarta.annotation.PostConstruct;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.context.ApplicationContext;
-import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
-import java.lang.reflect.Method;
-import java.net.InetAddress;
-import java.net.UnknownHostException;
 import java.time.OffsetDateTime;
 import java.util.*;
-import java.util.logging.Logger;
 
 @RestController
 @RequestMapping("/")
+@Log // Lombok annotation for logging
 public class ACPController extends RealTimeAgentCardController {
-    private static final Logger log = Logger.getLogger(ACPController.class.getName());
+
     
     private AIProcessor baseAIProcessor = null;
     private List<AgentManifest> agentManifests = new ArrayList<>();
@@ -60,6 +52,7 @@ public class ACPController extends RealTimeAgentCardController {
 
     @PostConstruct
     public void init() {
+        log.info("Initializing ACPController...");
         Map<GroupInfo, String> groupActions = PredictionLoader.getInstance().getActionGroupList().getGroupActions();
         Map<String, AIAction> predictions = PredictionLoader.getInstance().getPredictions();
 
@@ -137,6 +130,7 @@ public class ACPController extends RealTimeAgentCardController {
         } catch (UnknownHostException e) {
             log.warning("Host not known, using default localhost for URLs: " + e.getMessage());
         }
+        log.info("Initialization of ACPController completed.");
     }
 
 
@@ -249,8 +243,8 @@ public class ACPController extends RealTimeAgentCardController {
         return ResponseEntity.ok(run);
     }
     
-    private io.github.vishalmysore.domain.Error createError(String code, String message) {
-        io.github.vishalmysore.domain.Error error = new io.github.vishalmysore.domain.Error();
+    private Error createError(String code, String message) {
+        Error error = new Error();
         error.setCode(code);
         error.setMessage(message);
         return error;

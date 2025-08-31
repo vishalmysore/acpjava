@@ -1,6 +1,7 @@
-package io.github.vishalmysore.client;
+package io.github.vishalmysore.tools4ai.client;
 
-import io.github.vishalmysore.domain.*;
+
+import io.github.vishalmysore.tools4ai.domain.*;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.util.UriComponentsBuilder;
